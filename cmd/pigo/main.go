@@ -11,10 +11,10 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/bitinit/pigo/agent"
-	"github.com/bitinit/pigo/ai"
-	"github.com/bitinit/pigo/ai/deepseek"
-	"github.com/bitinit/pigo/codingagent"
+	"github.com/bitinit/pigo/internal/agent/codingagent"
+	"github.com/bitinit/pigo/internal/core/agentloop"
+	"github.com/bitinit/pigo/internal/core/ai"
+	"github.com/bitinit/pigo/internal/core/ai/deepseek"
 )
 
 func main() {
@@ -55,20 +55,20 @@ func run(ctx context.Context, args []string, input io.Reader, output, diagnostic
 		return err
 	}
 	printed := ""
-	session, err := codingagent.New(codingagent.Options{Directory: *directory, Agent: agent.Options{
+	session, err := codingagent.New(codingagent.Options{Directory: *directory, Agent: agentloop.Options{
 		Stream: client.Stream, MaxTurns: *maxTurns,
-		OnEvent: func(event agent.Event) {
-			if event.Type == agent.EventToolExecutionStart {
+		OnEvent: func(event agentloop.Event) {
+			if event.Type == agentloop.EventToolExecutionStart {
 				fmt.Fprintf(diagnostics, "[%s]\n", event.Call.Name)
 			}
 			message, ok := event.Message.(ai.AssistantMessage)
 			if !ok {
 				return
 			}
-			if event.Type == agent.EventMessageStart {
+			if event.Type == agentloop.EventMessageStart {
 				printed = ""
 			}
-			if event.Type != agent.EventMessageUpdate && event.Type != agent.EventMessageEnd {
+			if event.Type != agentloop.EventMessageUpdate && event.Type != agentloop.EventMessageEnd {
 				return
 			}
 			var text strings.Builder
@@ -82,7 +82,7 @@ func run(ctx context.Context, args []string, input io.Reader, output, diagnostic
 				fmt.Fprint(output, current[len(printed):])
 			}
 			printed = current
-			if event.Type == agent.EventMessageEnd && current != "" {
+			if event.Type == agentloop.EventMessageEnd && current != "" {
 				fmt.Fprintln(output)
 			}
 		},

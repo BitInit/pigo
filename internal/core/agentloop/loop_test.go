@@ -1,4 +1,4 @@
-package agent_test
+package agentloop_test
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bitinit/pigo/agent"
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/agentloop"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 func user(text string) ai.UserMessage {
@@ -32,12 +32,12 @@ func TestRunToolCycle(t *testing.T) {
 	ctx := context.Background()
 	original := make([]ai.Message, 1, 8)
 	original[0] = user("read the file")
-	var events []agent.EventType
+	var events []agentloop.EventType
 	var executed []string
 	modelCalls := 0
 	streamReturned := false
 	var historyLengths []int
-	tools := []agent.Tool{{
+	tools := []agentloop.Tool{{
 		Tool: declaration("read"),
 		Execute: func(ctx context.Context, c ai.ToolCall, update func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 			if !streamReturned {
@@ -48,7 +48,7 @@ func TestRunToolCycle(t *testing.T) {
 			return ai.ToolResultMessage{ToolCallID: "ignored", Content: []ai.ContentBlock{ai.TextContent{Text: "package main"}}}, nil
 		},
 	}}
-	history, err := agent.Run(ctx, original, agent.Options{
+	history, err := agentloop.Run(ctx, original, agentloop.Options{
 		Tools: tools,
 		Stream: func(ctx context.Context, request ai.Request, update func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 			modelCalls++
@@ -80,7 +80,7 @@ func TestRunToolCycle(t *testing.T) {
 			}
 			return answer("done"), nil
 		},
-		OnEvent: func(event agent.Event) { events = append(events, event.Type) },
+		OnEvent: func(event agentloop.Event) { events = append(events, event.Type) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -91,11 +91,11 @@ func TestRunToolCycle(t *testing.T) {
 	if original[:cap(original)][1] != nil {
 		t.Fatal("Run wrote into the caller's history backing array")
 	}
-	want := []agent.EventType{
-		agent.EventAgentStart, agent.EventTurnStart, agent.EventMessageStart, agent.EventMessageUpdate, agent.EventMessageEnd,
-		agent.EventToolExecutionStart, agent.EventToolExecutionUpdate, agent.EventToolExecutionEnd, agent.EventMessageStart, agent.EventMessageEnd,
-		agent.EventToolExecutionStart, agent.EventToolExecutionUpdate, agent.EventToolExecutionEnd, agent.EventMessageStart, agent.EventMessageEnd,
-		agent.EventTurnEnd, agent.EventTurnStart, agent.EventMessageStart, agent.EventMessageEnd, agent.EventTurnEnd, agent.EventAgentEnd,
+	want := []agentloop.EventType{
+		agentloop.EventAgentStart, agentloop.EventTurnStart, agentloop.EventMessageStart, agentloop.EventMessageUpdate, agentloop.EventMessageEnd,
+		agentloop.EventToolExecutionStart, agentloop.EventToolExecutionUpdate, agentloop.EventToolExecutionEnd, agentloop.EventMessageStart, agentloop.EventMessageEnd,
+		agentloop.EventToolExecutionStart, agentloop.EventToolExecutionUpdate, agentloop.EventToolExecutionEnd, agentloop.EventMessageStart, agentloop.EventMessageEnd,
+		agentloop.EventTurnEnd, agentloop.EventTurnStart, agentloop.EventMessageStart, agentloop.EventMessageEnd, agentloop.EventTurnEnd, agentloop.EventAgentEnd,
 	}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("event order:\n got %v\nwant %v", events, want)
@@ -108,7 +108,7 @@ func TestRunToolFailuresBecomeModelInput(t *testing.T) {
 			c := call("a", "read")
 			stop := ai.StopReasonToolUse
 			executions, requests := 0, 0
-			tool := agent.Tool{
+			tool := agentloop.Tool{
 				Tool: declaration("read"),
 				Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 					executions++
@@ -130,8 +130,8 @@ func TestRunToolFailuresBecomeModelInput(t *testing.T) {
 				// Even valid-looking arguments must not execute after a length stop.
 				stop = ai.StopReasonLength
 			}
-			history, err := agent.Run(context.Background(), []ai.Message{user("read")}, agent.Options{
-				Tools: []agent.Tool{tool},
+			history, err := agentloop.Run(context.Background(), []ai.Message{user("read")}, agentloop.Options{
+				Tools: []agentloop.Tool{tool},
 				Stream: func(_ context.Context, request ai.Request, _ func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 					requests++
 					if requests == 1 {
@@ -159,9 +159,9 @@ func TestRunCancellationFinishesToolResultsWithoutFurtherEffects(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	executions, requests := 0, 0
-	var lastEvent agent.Event
-	history, err := agent.Run(ctx, []ai.Message{user("work")}, agent.Options{
-		Tools: []agent.Tool{{
+	var lastEvent agentloop.Event
+	history, err := agentloop.Run(ctx, []ai.Message{user("work")}, agentloop.Options{
+		Tools: []agentloop.Tool{{
 			Tool: declaration("write"),
 			Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 				executions++
@@ -174,7 +174,7 @@ func TestRunCancellationFinishesToolResultsWithoutFurtherEffects(t *testing.T) {
 			requests++
 			return ai.AssistantMessage{StopReason: ai.StopReasonToolUse, Content: []ai.ContentBlock{call("a", "write"), call("b", "write")}}, nil
 		},
-		OnEvent: func(event agent.Event) { lastEvent = event },
+		OnEvent: func(event agentloop.Event) { lastEvent = event },
 	})
 	if !errors.Is(err, context.Canceled) || executions != 1 || requests != 1 || len(history) != 4 {
 		t.Fatalf("err=%v executions=%d requests=%d history=%d", err, executions, requests, len(history))
@@ -182,7 +182,7 @@ func TestRunCancellationFinishesToolResultsWithoutFurtherEffects(t *testing.T) {
 	if history[2].(ai.ToolResultMessage).IsError || !history[3].(ai.ToolResultMessage).IsError {
 		t.Fatal("completed effect or skipped call reported incorrectly")
 	}
-	if lastEvent.Type != agent.EventAgentEnd || !errors.Is(lastEvent.Err, context.Canceled) {
+	if lastEvent.Type != agentloop.EventAgentEnd || !errors.Is(lastEvent.Err, context.Canceled) {
 		t.Fatalf("incorrect final event: %+v", lastEvent)
 	}
 }
@@ -202,16 +202,16 @@ func TestRunModelFailuresPreservePartialResponse(t *testing.T) {
 		{"unfinished", ai.StopReasonPending, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var events []agent.EventType
-			history, err := agent.Run(context.Background(), []ai.Message{user("work")}, agent.Options{
-				Tools: []agent.Tool{{Tool: declaration("write"), Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
+			var events []agentloop.EventType
+			history, err := agentloop.Run(context.Background(), []ai.Message{user("work")}, agentloop.Options{
+				Tools: []agentloop.Tool{{Tool: declaration("write"), Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 					t.Fatal("executed tool from failed model response")
 					return ai.ToolResultMessage{}, nil
 				}}},
 				Stream: func(context.Context, ai.Request, func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 					return ai.AssistantMessage{StopReason: tc.stop, Content: []ai.ContentBlock{ai.TextContent{Text: "partial"}, call("a", "write")}}, tc.err
 				},
-				OnEvent: func(event agent.Event) { events = append(events, event.Type) },
+				OnEvent: func(event agentloop.Event) { events = append(events, event.Type) },
 			})
 			if err == nil || len(history) != 2 {
 				t.Fatalf("err=%v history=%d", err, len(history))
@@ -222,7 +222,7 @@ func TestRunModelFailuresPreservePartialResponse(t *testing.T) {
 			if history[1].(ai.AssistantMessage).Content[0].(ai.TextContent).Text != "partial" {
 				t.Fatal("partial response lost")
 			}
-			want := []agent.EventType{agent.EventAgentStart, agent.EventTurnStart, agent.EventMessageStart, agent.EventMessageEnd, agent.EventTurnEnd, agent.EventAgentEnd}
+			want := []agentloop.EventType{agentloop.EventAgentStart, agentloop.EventTurnStart, agentloop.EventMessageStart, agentloop.EventMessageEnd, agentloop.EventTurnEnd, agentloop.EventAgentEnd}
 			if !reflect.DeepEqual(events, want) {
 				t.Fatalf("unbalanced failure events: %v", events)
 			}
@@ -232,9 +232,9 @@ func TestRunModelFailuresPreservePartialResponse(t *testing.T) {
 
 func TestRunMaxTurnsCanResumeWithoutReplayingTools(t *testing.T) {
 	executions, requests := 0, 0
-	options := agent.Options{
+	options := agentloop.Options{
 		MaxTurns: 1,
-		Tools: []agent.Tool{{Tool: declaration("write"), Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
+		Tools: []agentloop.Tool{{Tool: declaration("write"), Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 			executions++
 			return ai.ToolResultMessage{}, nil
 		}}},
@@ -249,11 +249,11 @@ func TestRunMaxTurnsCanResumeWithoutReplayingTools(t *testing.T) {
 			return answer("done"), nil
 		},
 	}
-	history, err := agent.Run(context.Background(), []ai.Message{user("write")}, options)
-	if !errors.Is(err, agent.ErrMaxTurns) || len(history) != 3 {
+	history, err := agentloop.Run(context.Background(), []ai.Message{user("write")}, options)
+	if !errors.Is(err, agentloop.ErrMaxTurns) || len(history) != 3 {
 		t.Fatalf("err=%v history=%d", err, len(history))
 	}
-	history, err = agent.Run(context.Background(), history, options)
+	history, err = agentloop.Run(context.Background(), history, options)
 	if err != nil || executions != 1 || requests != 2 || len(history) != 4 {
 		t.Fatalf("err=%v executions=%d requests=%d history=%d", err, executions, requests, len(history))
 	}
@@ -261,10 +261,10 @@ func TestRunMaxTurnsCanResumeWithoutReplayingTools(t *testing.T) {
 
 func TestRunConversionSteeringAndFollowUp(t *testing.T) {
 	executions, requests, conversions, steeringPolls, followPolls := 0, 0, 0, 0, 0
-	history, err := agent.Run(context.Background(), []ai.Message{
+	history, err := agentloop.Run(context.Background(), []ai.Message{
 		user("start"), commandExecutionMessage{Command: "pwd", Output: "/workspace"},
-	}, agent.Options{
-		Tools: []agent.Tool{{Tool: declaration("read"), Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
+	}, agentloop.Options{
+		Tools: []agentloop.Tool{{Tool: declaration("read"), Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 			executions++
 			return ai.ToolResultMessage{}, nil
 		}}},
@@ -337,7 +337,7 @@ func TestRunRejectsInvalidInputBeforeModelCall(t *testing.T) {
 		{answer("already done")},
 	} {
 		t.Run(fmt.Sprintf("%T-%d", last(messages), len(messages)), func(t *testing.T) {
-			_, err := agent.Run(context.Background(), messages, agent.Options{
+			_, err := agentloop.Run(context.Background(), messages, agentloop.Options{
 				Stream: func(context.Context, ai.Request, func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 					t.Fatal("called model with invalid input")
 					return ai.AssistantMessage{}, nil
@@ -360,8 +360,8 @@ func last(messages []ai.Message) ai.Message {
 func TestRunRejectsAmbiguousToolIDsBeforeAnyEffects(t *testing.T) {
 	for _, id := range []string{"", "a"} {
 		t.Run("second-id-"+id, func(t *testing.T) {
-			_, err := agent.Run(context.Background(), []ai.Message{user("work")}, agent.Options{
-				Tools: []agent.Tool{{Tool: declaration("write"), Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
+			_, err := agentloop.Run(context.Background(), []ai.Message{user("work")}, agentloop.Options{
+				Tools: []agentloop.Tool{{Tool: declaration("write"), Execute: func(context.Context, ai.ToolCall, func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 					t.Fatal("executed ambiguous tool batch")
 					return ai.ToolResultMessage{}, nil
 				}}},
@@ -379,13 +379,13 @@ func TestRunRejectsAmbiguousToolIDsBeforeAnyEffects(t *testing.T) {
 func TestRunCancellationAtTurnEndWinsOverLimit(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, err := agent.Run(ctx, []ai.Message{user("hello")}, agent.Options{
+	_, err := agentloop.Run(ctx, []ai.Message{user("hello")}, agentloop.Options{
 		MaxTurns: 1,
 		Stream: func(context.Context, ai.Request, func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 			return answer("done"), nil
 		},
-		OnEvent: func(event agent.Event) {
-			if event.Type == agent.EventTurnEnd {
+		OnEvent: func(event agentloop.Event) {
+			if event.Type == agentloop.EventTurnEnd {
 				cancel()
 			}
 		},
@@ -398,8 +398,8 @@ func TestRunCancellationAtTurnEndWinsOverLimit(t *testing.T) {
 func TestRunPreservesDrainedMessagesOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var events []agent.EventType
-	history, err := agent.Run(ctx, []ai.Message{user("first")}, agent.Options{
+	var events []agentloop.EventType
+	history, err := agentloop.Run(ctx, []ai.Message{user("first")}, agentloop.Options{
 		GetSteering: func(context.Context) ([]ai.Message, error) {
 			cancel()
 			return []ai.Message{user("queued")}, nil
@@ -408,12 +408,12 @@ func TestRunPreservesDrainedMessagesOnCancellation(t *testing.T) {
 			t.Fatal("model called after cancellation")
 			return ai.AssistantMessage{}, nil
 		},
-		OnEvent: func(event agent.Event) { events = append(events, event.Type) },
+		OnEvent: func(event agentloop.Event) { events = append(events, event.Type) },
 	})
 	if !errors.Is(err, context.Canceled) || len(history) != 2 {
 		t.Fatalf("err=%v history=%d", err, len(history))
 	}
-	want := []agent.EventType{agent.EventAgentStart, agent.EventTurnStart, agent.EventMessageStart, agent.EventMessageEnd, agent.EventTurnEnd, agent.EventAgentEnd}
+	want := []agentloop.EventType{agentloop.EventAgentStart, agentloop.EventTurnStart, agentloop.EventMessageStart, agentloop.EventMessageEnd, agentloop.EventTurnEnd, agentloop.EventAgentEnd}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("incorrect queue lifecycle: %v", events)
 	}
@@ -422,8 +422,8 @@ func TestRunPreservesDrainedMessagesOnCancellation(t *testing.T) {
 func TestRunStopsBeforeSideEffectsWhenValidationCancels(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	history, err := agent.Run(ctx, []ai.Message{user("write")}, agent.Options{
-		Tools: []agent.Tool{{
+	history, err := agentloop.Run(ctx, []ai.Message{user("write")}, agentloop.Options{
+		Tools: []agentloop.Tool{{
 			Tool: declaration("write"),
 			Validate: func(json.RawMessage) error {
 				cancel()
@@ -445,7 +445,7 @@ func TestRunStopsBeforeSideEffectsWhenValidationCancels(t *testing.T) {
 
 func TestRunConversionFailureDoesNotCallModel(t *testing.T) {
 	convertErr := errors.New("cannot render custom message")
-	history, err := agent.Run(context.Background(), []ai.Message{commandExecutionMessage{}}, agent.Options{
+	history, err := agentloop.Run(context.Background(), []ai.Message{commandExecutionMessage{}}, agentloop.Options{
 		ConvertMessages: func(context.Context, []ai.Message) ([]ai.Message, error) {
 			return nil, convertErr
 		},
@@ -461,7 +461,7 @@ func TestRunConversionFailureDoesNotCallModel(t *testing.T) {
 
 func TestRunLimitDoesNotDrainQueues(t *testing.T) {
 	steeringPolls := 0
-	_, err := agent.Run(context.Background(), []ai.Message{user("hello")}, agent.Options{
+	_, err := agentloop.Run(context.Background(), []ai.Message{user("hello")}, agentloop.Options{
 		MaxTurns: 1,
 		GetSteering: func(context.Context) ([]ai.Message, error) {
 			steeringPolls++

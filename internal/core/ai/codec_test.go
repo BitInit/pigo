@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 func TestMessageRoundTripAndOwnership(t *testing.T) {

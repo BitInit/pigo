@@ -1,9 +1,9 @@
-package agent
+package agentloop
 
 import (
 	"context"
 	"encoding/json"
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 // Tool combines a model-visible declaration with its Go implementation.

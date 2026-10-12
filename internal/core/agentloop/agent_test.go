@@ -1,4 +1,4 @@
-package agent_test
+package agentloop_test
 
 import (
 	"context"
@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitinit/pigo/agent"
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/agentloop"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 func TestAgentConcurrentControlAndSettlement(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	ending, settle := make(chan struct{}), make(chan struct{})
 	requests := 0
-	a, err := agent.New(agent.Options{
+	a, err := agentloop.New(agentloop.Options{
 		Stream: func(ctx context.Context, request ai.Request, update func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 			requests++
 			last := request.Messages[len(request.Messages)-1].(ai.UserMessage).Content[0].(ai.TextContent).Text
@@ -29,8 +29,8 @@ func TestAgentConcurrentControlAndSettlement(t *testing.T) {
 			update(answer("partial"))
 			return answer("done"), nil
 		},
-		OnEvent: func(event agent.Event) {
-			if event.Type == agent.EventAgentEnd {
+		OnEvent: func(event agentloop.Event) {
+			if event.Type == agentloop.EventAgentEnd {
 				close(ending)
 				<-settle
 			}
@@ -42,13 +42,13 @@ func TestAgentConcurrentControlAndSettlement(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- a.Prompt(context.Background(), user("first")) }()
 	<-entered
-	if err := a.Prompt(context.Background(), user("concurrent")); !errors.Is(err, agent.ErrBusy) {
+	if err := a.Prompt(context.Background(), user("concurrent")); !errors.Is(err, agentloop.ErrBusy) {
 		t.Fatalf("concurrent prompt: %v", err)
 	}
-	if err := a.Reset(); !errors.Is(err, agent.ErrBusy) {
+	if err := a.Reset(); !errors.Is(err, agentloop.ErrBusy) {
 		t.Fatalf("active reset: %v", err)
 	}
-	if err := a.ReplaceMessages(nil); !errors.Is(err, agent.ErrBusy) {
+	if err := a.ReplaceMessages(nil); !errors.Is(err, agentloop.ErrBusy) {
 		t.Fatalf("active restore: %v", err)
 	}
 	a.Steer(user("steering"))
@@ -89,7 +89,7 @@ func TestAgentConcurrentControlAndSettlement(t *testing.T) {
 
 func TestAgentAbortPreservesResponse(t *testing.T) {
 	entered := make(chan struct{})
-	a, err := agent.New(agent.Options{Stream: func(ctx context.Context, _ ai.Request, update func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
+	a, err := agentloop.New(agentloop.Options{Stream: func(ctx context.Context, _ ai.Request, update func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 		partial := answer("partial")
 		update(partial)
 		close(entered)
@@ -117,7 +117,7 @@ func TestAgentAbortPreservesResponse(t *testing.T) {
 
 func TestAgentContinueDoesNotPreemptToolResultsWithFollowUp(t *testing.T) {
 	requests := 0
-	a, err := agent.New(agent.Options{Stream: func(_ context.Context, request ai.Request, _ func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
+	a, err := agentloop.New(agentloop.Options{Stream: func(_ context.Context, request ai.Request, _ func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 		requests++
 		want := ai.RoleToolResult
 		if requests == 2 {

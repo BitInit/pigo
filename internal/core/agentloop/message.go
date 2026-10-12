@@ -1,10 +1,10 @@
-// Package agent defines the contracts for extensible agent conversations.
-package agent
+// Package agentloop defines the contracts for extensible agent conversations.
+package agentloop
 
 import (
 	"context"
 
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 // MessageConverter prepares model input from agent history. Implementations may

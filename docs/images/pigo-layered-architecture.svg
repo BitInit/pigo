@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1180" viewBox="0 0 1440 1180">
+  <style>
+    text { font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif; fill: #172b45; }
+    .title { font-size: 42px; font-weight: 600; }
+    .subtitle { font-size: 21px; fill: #66758a; }
+    .label { font-size: 26px; font-weight: 600; }
+    .en { font-size: 18px; fill: #66758a; }
+    .item { font-size: 25px; font-weight: 500; }
+    .detail { font-size: 21px; fill: #53667b; }
+  </style>
+  <rect width="1440" height="1180" fill="#f7f9fc"/>
+  <text x="64" y="78" class="title">pigo 分层架构</text>
+  <text x="64" y="116" class="subtitle">完整 Agent 产品 · 展示与执行分离 · 同一引擎支持本地与服务端部署</text>
+
+  <rect x="64" y="160" width="1312" height="160" rx="18" fill="#eaf1ff" stroke="#cbd9ee"/>
+  <text x="94" y="218" class="label">展示层</text>
+  <text x="94" y="250" class="en">Client</text>
+  <rect x="314" y="188" width="498" height="104" rx="12" fill="white"/>
+  <rect x="834" y="188" width="514" height="104" rx="12" fill="white"/>
+  <text x="563" y="233" text-anchor="middle" class="item">可安装客户端</text>
+  <text x="563" y="267" text-anchor="middle" class="detail">对话、会话管理、执行过程展示</text>
+  <text x="1091" y="233" text-anchor="middle" class="item">浏览器 Web 页面</text>
+  <text x="1091" y="267" text-anchor="middle" class="detail">对话、会话管理、执行过程展示</text>
+
+  <rect x="64" y="340" width="1312" height="120" rx="18" fill="#eeeafb" stroke="#d9d0ee"/>
+  <text x="94" y="391" class="label">通信层</text>
+  <text x="94" y="423" class="en">API / Transport</text>
+  <text x="525" y="391" text-anchor="middle" class="item">HTTP</text>
+  <text x="525" y="425" text-anchor="middle" class="detail">操作与查询</text>
+  <text x="866" y="391" text-anchor="middle" class="item">WebSocket</text>
+  <text x="866" y="425" text-anchor="middle" class="detail">实时事件</text>
+  <text x="1196" y="391" text-anchor="middle" class="item">RPC（可选）</text>
+  <text x="1196" y="425" text-anchor="middle" class="detail">服务端集成</text>
+
+  <rect x="64" y="480" width="1312" height="148" rx="18" fill="#eaf1ff" stroke="#cbd9ee"/>
+  <text x="94" y="538" class="label">应用层</text>
+  <text x="94" y="570" class="en">internal/agent</text>
+  <rect x="64" y="638" width="1312" height="274" rx="18" fill="#e8f3ef" stroke="#c7ddd4"/>
+  <text x="94" y="691" class="label">通用核心</text>
+  <text x="94" y="723" class="en">internal/core</text>
+  <text x="94" y="780" class="detail">极简、可扩展</text>
+  <text x="94" y="813" class="detail">独立于应用领域</text>
+
+  <rect x="314" y="508" width="1034" height="106" rx="12" fill="white"/>
+  <text x="344" y="551" class="item">编码应用 · codingagent</text>
+  <text x="344" y="585" class="detail">编码提示词　 /　 项目上下文　 /　 基础工具　 /　 扩展能力</text>
+
+  <rect x="314" y="658" width="1034" height="86" rx="12" fill="white"/>
+  <text x="344" y="695" class="item">执行层 · agentloop</text>
+  <text x="344" y="726" class="detail">Agent Loop　 /　 对话状态　 /　 工具调用　 /　 事件与取消</text>
+
+  <rect x="314" y="768" width="1034" height="116" rx="12" fill="white"/>
+  <text x="344" y="813" class="item">模型层 · ai</text>
+  <text x="344" y="849" class="detail">统一消息　 /　 模型请求　 /　 流式响应　 /　 Provider 适配</text>
+
+  <text x="64" y="962" class="label">部署形态</text>
+  <text x="212" y="962" class="subtitle">同一套 Agent Core，选择不同运行位置</text>
+  <rect x="64" y="984" width="644" height="132" rx="16" fill="white" stroke="#d5dce5"/>
+  <rect x="732" y="984" width="644" height="132" rx="16" fill="white" stroke="#d5dce5"/>
+  <text x="94" y="1028" class="item">本地模式</text>
+  <text x="94" y="1063" class="detail">Core 运行在用户电脑上，访问本地项目</text>
+  <text x="94" y="1095" class="detail">客户端 / 浏览器通过 localhost 连接</text>
+  <text x="762" y="1028" class="item">服务端模式</text>
+  <text x="762" y="1063" class="detail">Core 运行在服务器上，访问服务端工作区</text>
+  <text x="762" y="1095" class="detail">客户端 / 浏览器 / 其他服务通过网络连接</text>
+  <text x="64" y="1155" class="en">目标架构 · 通信层与图形客户端尚待实现</text>
+</svg>

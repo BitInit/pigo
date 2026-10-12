@@ -1,4 +1,4 @@
-package agent
+package agentloop
 
 import (
 	"bytes"
@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 // ErrMaxTurns means another tool-response turn was needed but the limit was hit.
 // The returned history includes all completed tool results and can be resumed.
-var ErrMaxTurns = errors.New("agent: maximum model turns reached")
+var ErrMaxTurns = errors.New("agentloop: maximum model turns reached")
 
 // Run continues a conversation until the model stops requesting tools and there
 // are no queued messages. To start a new prompt, append it to history before Run.
@@ -27,22 +27,22 @@ var ErrMaxTurns = errors.New("agent: maximum model turns reached")
 func Run(ctx context.Context, messages []ai.Message, options Options) (history []ai.Message, err error) {
 	history = append([]ai.Message(nil), messages...)
 	if options.Stream == nil {
-		return history, errors.New("agent: Stream is required")
+		return history, errors.New("agentloop: Stream is required")
 	}
 	if options.MaxTurns < 0 {
-		return history, errors.New("agent: MaxTurns must not be negative")
+		return history, errors.New("agentloop: MaxTurns must not be negative")
 	}
 	tools := make(map[string]Tool, len(options.Tools))
 	declarations := make([]ai.Tool, 0, len(options.Tools))
 	for _, tool := range options.Tools {
 		if tool.Name == "" || tool.Execute == nil {
-			return history, errors.New("agent: tools require a name and Execute function")
+			return history, errors.New("agentloop: tools require a name and Execute function")
 		}
 		if _, exists := tools[tool.Name]; exists {
-			return history, fmt.Errorf("agent: duplicate tool %q", tool.Name)
+			return history, fmt.Errorf("agentloop: duplicate tool %q", tool.Name)
 		}
 		if !jsonObject(tool.Parameters) {
-			return history, fmt.Errorf("agent: tool %q parameters must be a JSON schema object", tool.Name)
+			return history, fmt.Errorf("agentloop: tool %q parameters must be a JSON schema object", tool.Name)
 		}
 		tools[tool.Name] = tool
 		declarations = append(declarations, tool.Tool)
@@ -68,7 +68,7 @@ func Run(ctx context.Context, messages []ai.Message, options Options) (history [
 	if options.GetSteering != nil {
 		pending, err = options.GetSteering(ctx)
 		if err != nil {
-			return history, fmt.Errorf("agent: steering: %w", err)
+			return history, fmt.Errorf("agentloop: steering: %w", err)
 		}
 	}
 	for {
@@ -126,9 +126,9 @@ func Run(ctx context.Context, messages []ai.Message, options Options) (history [
 			case ai.StopReasonAborted:
 				streamErr = context.Canceled
 			case ai.StopReasonError:
-				streamErr = fmt.Errorf("agent: model failed: %s", response.ErrorMessage)
+				streamErr = fmt.Errorf("agentloop: model failed: %s", response.ErrorMessage)
 			default:
-				streamErr = fmt.Errorf("agent: model returned non-final stop reason %q", response.StopReason)
+				streamErr = fmt.Errorf("agentloop: model returned non-final stop reason %q", response.StopReason)
 			}
 		}
 		history = append(history, response)
@@ -188,7 +188,7 @@ func Run(ctx context.Context, messages []ai.Message, options Options) (history [
 		if options.GetSteering != nil {
 			pending, err = options.GetSteering(ctx)
 			if err != nil {
-				return history, fmt.Errorf("agent: steering: %w", err)
+				return history, fmt.Errorf("agentloop: steering: %w", err)
 			}
 		}
 		if len(calls) > 0 || len(pending) > 0 {
@@ -200,7 +200,7 @@ func Run(ctx context.Context, messages []ai.Message, options Options) (history [
 		if options.GetFollowUp != nil {
 			pending, err = options.GetFollowUp(ctx)
 			if err != nil {
-				return history, fmt.Errorf("agent: follow-up: %w", err)
+				return history, fmt.Errorf("agentloop: follow-up: %w", err)
 			}
 		}
 		if len(pending) == 0 {
@@ -211,7 +211,7 @@ func Run(ctx context.Context, messages []ai.Message, options Options) (history [
 
 func validateModelMessages(messages []ai.Message) error {
 	if len(messages) == 0 {
-		return errors.New("agent: no model messages")
+		return errors.New("agentloop: no model messages")
 	}
 	for i, message := range messages {
 		valid := true
@@ -229,12 +229,12 @@ func validateModelMessages(messages []ai.Message) error {
 			valid = false
 		}
 		if !valid {
-			return fmt.Errorf("agent: unsupported or nil model message at index %d (%T); convert custom messages before calling the model", i, message)
+			return fmt.Errorf("agentloop: unsupported or nil model message at index %d (%T); convert custom messages before calling the model", i, message)
 		}
 	}
 	role := messages[len(messages)-1].Role()
 	if role != ai.RoleUser && role != ai.RoleToolResult {
-		return fmt.Errorf("agent: model input must end with user or toolResult, got %q", role)
+		return fmt.Errorf("agentloop: model input must end with user or toolResult, got %q", role)
 	}
 	return nil
 }
@@ -251,30 +251,30 @@ func responseToolCalls(response ai.AssistantMessage) ([]ai.ToolCall, error) {
 			if block != nil {
 				continue
 			}
-			return nil, errors.New("agent: nil text block")
+			return nil, errors.New("agentloop: nil text block")
 		case *ai.ThinkingContent:
 			if block != nil {
 				continue
 			}
-			return nil, errors.New("agent: nil thinking block")
+			return nil, errors.New("agentloop: nil thinking block")
 		case ai.ToolCall:
 			call = block
 		case *ai.ToolCall:
 			if block == nil {
-				return nil, errors.New("agent: nil tool call")
+				return nil, errors.New("agentloop: nil tool call")
 			}
 			call = *block
 		default:
-			return nil, fmt.Errorf("agent: unsupported assistant content %T", block)
+			return nil, fmt.Errorf("agentloop: unsupported assistant content %T", block)
 		}
 		if call.ID == "" || ids[call.ID] {
-			return nil, fmt.Errorf("agent: missing or duplicate tool call id %q", call.ID)
+			return nil, fmt.Errorf("agentloop: missing or duplicate tool call id %q", call.ID)
 		}
 		ids[call.ID] = true
 		calls = append(calls, call)
 	}
 	if response.StopReason == ai.StopReasonToolUse && len(calls) == 0 {
-		return nil, errors.New("agent: toolUse response contains no tool calls")
+		return nil, errors.New("agentloop: toolUse response contains no tool calls")
 	}
 	return calls, nil
 }

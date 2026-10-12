@@ -2,7 +2,7 @@ package ai
 
 import "encoding/json"
 
-// Tool describes a callable tool to a model. Execution belongs to package agent.
+// Tool describes a callable tool to a model. Execution belongs to package agentloop.
 type Tool struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`

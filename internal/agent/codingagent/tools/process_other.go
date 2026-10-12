@@ -1,6 +1,6 @@
 //go:build !unix
 
-package codingagent
+package tools
 
 import "os/exec"
 

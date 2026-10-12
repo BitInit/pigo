@@ -1,11 +1,11 @@
-package agent_test
+package agentloop_test
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/bitinit/pigo/agent"
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/agentloop"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 // An application owns its message payload and needs only a Role method.
@@ -27,7 +27,7 @@ func ExampleMessageConverter() {
 
 	// This application explicitly supports user messages and command records.
 	// A production converter would also handle the other built-in message types.
-	var convert agent.MessageConverter = func(ctx context.Context, messages []ai.Message) ([]ai.Message, error) {
+	var convert agentloop.MessageConverter = func(ctx context.Context, messages []ai.Message) ([]ai.Message, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

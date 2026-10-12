@@ -1,15 +1,15 @@
-package agent
+package agentloop
 
 import (
 	"context"
 	"errors"
 	"sync"
 
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
-// ErrBusy means the requested operation requires an idle agent.
-var ErrBusy = errors.New("agent: a run is already active")
+// ErrBusy means the requested operation requires an idle agentloop.
+var ErrBusy = errors.New("agentloop: a run is already active")
 
 // State is a snapshot. Built-in message payloads are independent copies; custom
 // message implementations must be immutable. Err is the last run's error.
@@ -35,17 +35,17 @@ type Agent struct {
 	done     chan struct{}
 }
 
-// New creates a stateful agent. It owns its queues, so GetSteering/GetFollowUp
+// New creates a stateful agentloop. It owns its queues, so GetSteering/GetFollowUp
 // must be nil; use Steer/FollowUp instead. Options and custom payloads are immutable.
 func New(options Options, messages ...ai.Message) (*Agent, error) {
 	if options.Stream == nil {
-		return nil, errors.New("agent: Stream is required")
+		return nil, errors.New("agentloop: Stream is required")
 	}
 	if options.GetSteering != nil || options.GetFollowUp != nil {
-		return nil, errors.New("agent: use Steer and FollowUp with a stateful agent")
+		return nil, errors.New("agentloop: use Steer and FollowUp with a stateful agent")
 	}
 	if options.MaxTurns < 0 {
-		return nil, errors.New("agent: negative MaxTurns")
+		return nil, errors.New("agentloop: negative MaxTurns")
 	}
 	options.Tools = append([]Tool(nil), options.Tools...)
 	for i := range options.Tools {
@@ -77,7 +77,7 @@ func (a *Agent) Snapshot() State {
 // if the client needs to continue accepting input while the agent runs.
 func (a *Agent) Prompt(ctx context.Context, messages ...ai.Message) error {
 	if len(messages) == 0 {
-		return errors.New("agent: prompt is empty")
+		return errors.New("agentloop: prompt is empty")
 	}
 	return a.run(ctx, messages)
 }

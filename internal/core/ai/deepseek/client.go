@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 // Config selects one model and transport. The client never reads process credentials.
@@ -92,7 +92,7 @@ type request struct {
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
-// Stream implements agent.Options.Stream. Updates are independent assembled
+// Stream implements agentloop.Options.Stream. Updates are independent assembled
 // snapshots. Partial tool arguments are never executed here. Text and tool calls
 // are supported; unsupported content (including images) is rejected explicitly.
 func (c *Client) Stream(ctx context.Context, input ai.Request, update func(ai.AssistantMessage)) (result ai.AssistantMessage, err error) {

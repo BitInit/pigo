@@ -1,4 +1,5 @@
-package codingagent
+// Package tools provides the basic coding tools.
+package tools
 
 import (
 	"bytes"
@@ -6,25 +7,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
-	"github.com/bitinit/pigo/agent"
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/agentloop"
+	"github.com/bitinit/pigo/internal/core/ai"
+	"github.com/bitinit/pigo/internal/storage"
 )
 
 const maxFileBytes = 8 << 20
 const maxOutputBytes = 64 << 10
 
-// NewTools creates pi-style read, write, edit, and bash tools. Relative paths and
+// New creates pi-style read, write, edit, and bash tools. Relative paths and
 // commands use directory. Absolute paths are allowed. This is not a sandbox:
 // tools run with the host process's filesystem, network, and environment access.
-func NewTools(directory string) ([]agent.Tool, error) {
+func New(directory string) ([]agentloop.Tool, error) {
 	directory, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func NewTools(directory string) ([]agent.Tool, error) {
 		return nil, fmt.Errorf("codingagent: %s is not a directory", directory)
 	}
 	t := fileTools{directory: directory}
-	return []agent.Tool{
+	return []agentloop.Tool{
 		{Tool: ai.Tool{Name: "read", Description: "Read a UTF-8 text file with line numbers. Offset is one-based; default limit is 2000 lines. Output is bounded to 64 KiB; use offset/limit for more.", Parameters: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","minLength":1},"offset":{"type":"integer","minimum":1},"limit":{"type":"integer","minimum":1}},"required":["path"],"additionalProperties":false}`)}, Execute: t.read},
 		{Tool: ai.Tool{Name: "write", Description: "Create or overwrite a text file. Creates parent directories. Read existing files before replacing them.", Parameters: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","minLength":1},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":false}`)}, Execute: t.write},
 		{Tool: ai.Tool{Name: "edit", Description: "Replace exactly one occurrence of oldText with newText. Fails if oldText is absent or ambiguous; read the file first.", Parameters: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","minLength":1},"oldText":{"type":"string","minLength":1},"newText":{"type":"string"}},"required":["path","oldText","newText"],"additionalProperties":false}`)}, Execute: t.edit},
@@ -73,32 +73,6 @@ func textResult(text string) ai.ToolResultMessage {
 	return ai.ToolResultMessage{Content: []ai.ContentBlock{ai.TextContent{Text: text}}}
 }
 
-func readText(path string, limit int64) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, errors.New("not a regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(data)) > limit {
-		return nil, fmt.Errorf("file exceeds %d bytes", limit)
-	}
-	if !utf8.Valid(data) || bytes.ContainsRune(data, 0) {
-		return nil, errors.New("file is not UTF-8 text")
-	}
-	return data, nil
-}
-
 func (t fileTools) read(ctx context.Context, call ai.ToolCall, _ func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 	args, err := decode[struct {
 		Path   string
@@ -125,7 +99,7 @@ func (t fileTools) read(ctx context.Context, call ai.ToolCall, _ func(ai.ToolRes
 	if err := ctx.Err(); err != nil {
 		return ai.ToolResultMessage{}, err
 	}
-	data, err := readText(path, maxFileBytes)
+	data, err := storage.ReadText(path, maxFileBytes)
 	if err != nil {
 		return ai.ToolResultMessage{}, err
 	}
@@ -198,7 +172,7 @@ func (t fileTools) edit(ctx context.Context, call ai.ToolCall, _ func(ai.ToolRes
 	if err := ctx.Err(); err != nil {
 		return ai.ToolResultMessage{}, err
 	}
-	data, err := readText(path, maxFileBytes)
+	data, err := storage.ReadText(path, maxFileBytes)
 	if err != nil {
 		return ai.ToolResultMessage{}, err
 	}
@@ -235,32 +209,7 @@ func writeFile(ctx context.Context, path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	return atomicWrite(ctx, path, data, mode)
-}
-
-func atomicWrite(ctx context.Context, path string, data []byte, mode os.FileMode) error {
-	f, err := os.CreateTemp(filepath.Dir(path), ".pigo-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if err = f.Chmod(mode); err == nil {
-		_, err = f.Write(data)
-	}
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil {
-		return err
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), path)
+	return storage.WriteAtomic(ctx, path, data, mode)
 }
 
 type commandOutput struct {

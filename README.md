@@ -1,197 +1,106 @@
 # pigo
 
-A small Go coding-agent harness inspired by pi. The core is usable as a library;
-the CLI is a client of the same code. Go 1.22 or later is required. There are no
-third-party Go dependencies.
+pigo 是一个使用 Go 开发的 Agent 产品，参考 pi 的设计，保持核心极简，并通过基础工具和扩展能力支持不同应用场景。首个应用场景是编码助手，后续可通过自定义消息、工具和应用指令扩展到其他领域。
 
-## Packages
+产品采用 Agent Core 与展示层分离的架构。同一套核心引擎既可以运行在用户电脑上，作为本地客户端的后台引擎，也可以部署在服务器上，为远程客户端提供服务。
 
-- `ai`: open `Message` and `ContentBlock` interfaces, concrete model messages,
-  request/tool declarations, token usage, copying, and built-in message codecs.
-- `ai/deepseek`: streaming DeepSeek Chat Completions adapter using `net/http`.
-- `agent`: the stateless `Run` loop and a stateful `Agent` with one active run,
-  conversation history, cancellation, event callbacks, and message queues.
-- `codingagent`: coding instructions, project context, four tools, and explicit
-  session persistence.
-- `cmd/pigo`: a thin terminal client.
+**项目状态：正在构建中。** API、配置和存储格式尚未稳定，后续可能调整。安装、使用、调试和集成指南将在具备发布条件时补充。
 
-`Message` is defined only in `ai` and requires `Role() ai.Role`. Application-defined
-messages implement it directly. `ConvertMessages` translates or filters custom
-messages before each model request. The default path rejects unsupported types.
+## 设计目标
 
-## Run
+- 保持核心简单，内置少量基础工具，提供明确的扩展点。
+- 分离模型接入、Agent 执行、应用能力和客户端展示。
+- 同一套核心引擎支持本地运行和服务端部署。
+- 界面和通信协议独立于 Agent 执行循环。
+- 遵循 Go 的语言习惯，优先使用标准库，避免不必要的抽象。
 
-Set `DEEPSEEK_API_KEY` in the environment, then run from the module directory:
+## 分层架构
 
-```sh
-go run ./cmd/pigo -cwd /path/to/project "Inspect the code and explain its structure"
-```
+![pigo 分层架构：展示层、通信层、核心引擎及本地与服务端部署形态](docs/images/pigo-layered-architecture.png)
 
-To use an interactive conversation with explicit persistence:
+[查看 SVG 矢量图](docs/images/pigo-layered-architecture.svg)。图中展示的是目标产品架构，通信层和图形客户端尚待实现。下表说明当前代码中的模块职责。
 
-```sh
-go run ./cmd/pigo -cwd /path/to/project -session ./conversation.json
-```
-
-Each non-empty input line is one prompt. Commands:
-
-- `/continue`: continue after a turn limit or process a queued prompt. Previously
-  completed tools are never replayed.
-- `/reset`: clear the conversation and queues, retaining initial instructions.
-- `/exit`: exit the client.
-- Ctrl-C: cancel the active operation and exit. If `-session` was provided,
-  completed and interrupted results are saved after the run settles.
-
-Flags include `-model`, `-base-url`, `-thinking enabled|disabled`, and `-max-turns`.
-The CLI defaults to `deepseek-flash` and 40 model calls per prompt. Set
-`DEEPSEEK_MODEL` or `-model` to choose another model. `DEEPSEEK_BASE_URL` or
-`-base-url` selects an alternate endpoint. Model IDs are not hardcoded in the
-provider adapter. Session paths are relative to the launching process's directory.
-
-The adapter follows the official [Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/)
-and preserves reasoning content for subsequent requests as described in
-[Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode/).
-
-## VS Code debugging
-
-Open the `pigo` module directory itself in VS Code. The repository recommends the
-official Go extension (`golang.go`). If Delve is missing or too old, run
-**Go: Install/Update Tools** from the Command Palette and select `dlv`.
-
-Create `.env` from `.env.example` if it does not exist, then set
-`DEEPSEEK_API_KEY` in `.env`. Optional model and endpoint settings are also included
-in the template. `.env` is ignored by Git. Do not put API keys in `launch.json`.
-VS Code loads this file for the CLI profiles; the CLI itself does not load `.env`.
-
-Select a profile in **Run and Debug**, set breakpoints, and press **F5**:
-
-| Profile | Behavior |
+| 模块 | 职责 |
 | --- | --- |
-| `pigo: Interactive CLI` | Start a fresh conversation and type prompts in the integrated terminal |
-| `pigo: Single task` | Enter a prompt in a dialog and debug that task |
-| `pigo: Current package tests` | Open a Go test file, then debug that package's tests without a real API key |
+| `internal/core/ai` | 定义与模型服务商无关的消息、内容、请求、工具声明和用量统计 |
+| `internal/core/ai/deepseek` | 适配 DeepSeek 的流式接口 |
+| `internal/core/agentloop` | 模型与工具执行循环、对话状态、事件、取消和输入队列 |
+| `internal/agent/codingagent` | 编码提示词、项目上下文、基础工具和会话持久化 |
+| `internal/agent/codingagent/tools` | 编码场景的基础工具 |
+| `internal/storage` | 有大小限制的文本读取与原子文件写入 |
+| `cmd/pigo` | 初步的终端客户端 |
 
-Use **Run Without Debugging** to launch a selected CLI profile without breakpoints.
-Enter messages in the **Terminal**, not the **Debug Console**, which evaluates Go
-expressions. The test profile does not load `.env` and uses the existing fake model
-and local HTTP tests. Tests involving deadlines can fail if paused too long.
+`codingagent` 位于应用层，组合 `core/agentloop` 的能力；`agentloop` 使用 `core/ai` 定义的模型调用契约。`internal/agent/` 仅组织具体应用，不定义重复的通用 Agent 接口。客户端负责交互与展示，通过通信层控制应用并接收事件。未来的可安装客户端和 Web 页面将复用同一套核心引擎。
 
-The CLI profiles use the workspace as the coding agent's working directory. To
-work on another project, change the value after `-cwd` in the selected profile's
-`args`; leave `program` pointing at `cmd/pigo`. Profiles start without a session
-file by default. To persist a conversation, add `-session` and an explicit path
-before the prompt (and before `--` in the single-task profile).
+## 代码结构
 
-Useful breakpoint locations include `run` in `cmd/pigo/main.go`, `Run` in
-`agent/loop.go`, the tool methods in `codingagent/tools.go`, and `Client.Stream`
-in `ai/deepseek/client.go`. **Tasks: Run Task** also offers `go: test` and `go: vet`.
-Delve builds the debug binary itself; no separate build task is needed.
-
-See the [Go extension debugging guide](https://github.com/golang/vscode-go/blob/master/docs/debugging.md)
-for debugger installation and platform-specific troubleshooting.
-
-## Embed in Go
-
-```go
-func runCodingTask(ctx context.Context, directory, apiKey, model string) error {
-    client, err := deepseek.New(deepseek.Config{
-        APIKey: apiKey,
-        Model:  model,
-    })
-    if err != nil {
-        return err
-    }
-
-    session, err := codingagent.New(codingagent.Options{
-        Directory: directory,
-        Agent: agent.Options{
-            Stream:   client.Stream,
-            MaxTurns: 40,
-            OnEvent: func(event agent.Event) {
-                // Forward updates to a terminal, desktop client, or server client.
-            },
-        },
-    })
-    if err != nil {
-        return err
-    }
-
-    return session.Agent.Prompt(ctx, ai.UserMessage{
-        Content: []ai.ContentBlock{
-            ai.TextContent{Text: "Read the failing test and fix the implementation"},
-        },
-    })
-}
+```text
+pigo/
+├── cmd/pigo/                       # 当前终端入口
+├── internal/
+│   ├── core/
+│   │   ├── ai/                     # 统一消息与模型接入
+│   │   └── agentloop/              # 通用 Agent 执行能力
+│   ├── agent/
+│   │   └── codingagent/            # 编码应用
+│   │       ├── prompt.go           # 默认系统提示词
+│   │       ├── context.go          # 项目上下文
+│   │       ├── session.go          # 编码会话的组装与保存恢复
+│   │       └── tools/              # 基础编码工具
+│   └── storage/                    # 共享文件读写能力
+└── docs/images/                    # 架构图
 ```
 
-Import `context`, `github.com/bitinit/pigo/ai`, `github.com/bitinit/pigo/ai/deepseek`,
-`github.com/bitinit/pigo/agent`, and `github.com/bitinit/pigo/codingagent` for this example.
+后续按功能开发进度增加 `internal/app`、`extensions`、`transport`、`config` 和 `observability`，分别承载产品运行管理、扩展、通信、配置与监控。展示层放在 `clients/web`，桌面封装放在 `clients/desktop`；协议定义、扩展示例、跨模块集成测试和构建脚本分别放在 `api`、`examples`、`tests/integration` 和 `scripts`。这些目录尚未实现，当前不创建空骨架。
 
-`Prompt` and `Continue` run synchronously. A client can start them in its own
-goroutine and call `Snapshot`, `Steer`, `FollowUp`, `Abort`, or `Wait` concurrently.
-Concurrent runs return `agent.ErrBusy`. Event callbacks run in order, outside the
-agent's lock; they may inspect state or request cancellation. Do not call `Wait`
-from the active run's callback. The agent becomes idle only after callbacks settle.
+Go 实现位于 `internal`，不作为可被外部 Go 模块直接导入的公共库。开发者扩展的接入协议将在扩展机制开发时确定。单元测试与实现放在同一目录。
 
-Steering is consumed one message per turn, after the current tool batch. Follow-up
-messages are consumed only after the model would otherwise stop. Queues remain
-available when the model-turn limit is reached. `Snapshot` copies built-in payloads;
-custom message implementations must be immutable.
+## 当前能力
 
-Supply a non-nil `codingagent.Options.Agent.Tools` slice to replace the default
-tools, or use `codingagent.NewTools` and append custom tools before construction.
-Set `SystemPrompt` to replace the default coding instructions. Working-directory
-and ancestor `AGENTS.md` instructions are appended to either prompt. The agent is
-instructed to inspect additional nested `AGENTS.md` files before editing there.
+- 可扩展的消息与内容接口，以及内置消息类型的复制、序列化和反序列化。
+- DeepSeek 流式文本、推理内容、工具调用和用量统计。
+- 模型与工具执行循环，支持有序事件、取消、轮次限制、转向消息和后续消息队列。
+- 有状态对话，支持快照、重置和达到轮次上限后的继续执行。
+- 编码指令，以及当前工作目录和上级目录中的 `AGENTS.md` 加载。
+- `read`、`write`、`edit`、`bash` 四个基础工具。
+- 显式保存与加载会话，以及最小可用的终端客户端。
+- 使用模拟模型、本地 HTTP 服务和临时文件的自动化测试。
 
-## Tool behavior
+当前 DeepSeek 适配器支持文本输入，暂不支持图片输入。会话持久化支持内置消息类型，恢复时要求工作目录一致。工具使用宿主进程的权限执行，尚未内置沙箱或托管环境下的会话隔离。
 
-| Tool | Behavior |
-| --- | --- |
-| `read` | UTF-8 text with line numbers, one-based offset and line limit |
-| `write` | Create or overwrite a file using atomic replacement |
-| `edit` | Replace exactly one occurrence of `oldText`; ambiguous matches fail |
-| `bash` | Execute a command in the working directory, streaming combined output |
+## 开发路线
 
-File operations accept relative and absolute paths. Read/edit input is limited to
-8 MiB and tool output to 64 KiB. Bash commands default to a 120-second timeout,
-configurable per call up to 600 seconds. Bash must be available on `PATH`. On Unix,
-cancellation and command completion clean up the command's process group. On other
-platforms only the direct process is terminated.
+以下为计划开发的能力，排列顺序体现当前优先级，不代表发布承诺。客户端技术选型和通信细节仍待确定。
 
-Tools use the host process's filesystem, environment, and network permissions;
-the working directory is not a sandbox. Hosted deployments need their own process
-isolation and access controls.
+### 1. 核心可靠性与上下文管理
 
-Tool errors become model-visible results so the model can correct its request.
-Tools run sequentially and only after the full model response. Truncated model
-responses never execute tools. Parent cancellation stops the run; a command's own
-timeout is a recoverable tool error. Side effects already performed cannot be
-rolled back. The loop never automatically retries requests or replays old tools.
+- [ ] 完善流式响应、取消、工具结果处理和中断后的恢复行为，并补充回归测试。
+- [ ] 增加上下文用量跟踪和可配置的对话压缩，保留工具调用与结果的配对关系，以及模型服务商要求回传的上下文数据。
+- [ ] 定义模型服务商的能力描述，接入更多模型，并将服务商差异封装在适配层。
 
-## Sessions and current boundaries
+### 2. 编码工作流与扩展能力
 
-`Session.Save` and `Session.Load` operate on idle sessions. Saves use atomic JSON
-replacement and file mode `0600`. History, reasoning, and pending queues are saved;
-provider configuration and executable tool functions are not. Files contain the
-full conversation and tool output. Restore requires the same
-working directory, refreshes the initial project instructions, and executes nothing.
-The built-in codec rejects custom message types; applications can provide their
-own storage using `Agent.Snapshot` and `Agent.ReplaceMessages`.
+- [ ] 在显式保存与加载的基础上，增加会话列表、切换和分支能力。
+- [ ] 增加可复用的提示词模板和技能（Skills），支持不同编码工作流。
+- [ ] 定义精简的应用扩展接口，支持自定义工具、指令和生命周期钩子，将应用策略保留在通用执行循环之外。
+- [ ] 完善项目上下文加载，以及大文件和工具输出的处理。
 
-The current provider supports text, reasoning, and tool calls. Image input is
-rejected explicitly. There is no automatic context compaction, session branching,
-plugin runtime, HTTP server, or Web UI yet. The library APIs provide the execution
-boundary for those clients without coupling the agent to a transport.
+### 3. 客户端与服务模式
 
-## Validation
+- [ ] 改善终端交互，清晰展示工具执行进度，并完善对话控制。
+- [ ] 增加 HTTP 接口，支持会话创建、消息提交、取消执行和状态查询。
+- [ ] 增加 WebSocket 事件流，定义事件序列化和客户端断线重连行为。
+- [ ] 按需增加 RPC 接口，为其他服务提供相同的核心能力。
+- [ ] 基于服务接口开发 Web 展示层，后续提供可安装客户端。
+- [ ] 为服务端部署增加身份认证、会话工作区隔离、资源限制和可配置的工具权限。
 
-```sh
-go test ./...
-go test -race ./...
-go vet ./...
-```
+### 4. 发布准备
 
-Tests use fake model functions and local HTTP test servers. The coding tests use
-temporary files and harmless local shell commands; they do not call real model
-APIs, read API credentials, or consume paid tokens.
+- [ ] 稳定公共接口、配置和会话存储格式。
+- [ ] 建立持续集成检查，覆盖支持的 Go 版本与操作系统。
+- [ ] 准备版本发布、可执行文件和更新日志。
+- [ ] 补充安装、使用、调试、集成和部署指南。
+
+## 开发说明
+
+需要 Go 1.22 或更高版本，当前没有第三方 Go 依赖。开发约定见 [AGENTS.md](AGENTS.md)。

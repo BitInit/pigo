@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bitinit/pigo/agent"
-	"github.com/bitinit/pigo/ai"
+	"github.com/bitinit/pigo/internal/core/agentloop"
+	"github.com/bitinit/pigo/internal/core/ai"
 )
 
 func TestStreamToolRoundTrip(t *testing.T) {
@@ -57,11 +57,11 @@ data: [DONE]
 		t.Fatal(err)
 	}
 	var snapshots []ai.AssistantMessage
-	history, err := agent.Run(context.Background(), []ai.Message{ai.UserMessage{Content: []ai.ContentBlock{ai.TextContent{Text: "read"}}}}, agent.Options{
+	history, err := agentloop.Run(context.Background(), []ai.Message{ai.UserMessage{Content: []ai.ContentBlock{ai.TextContent{Text: "read"}}}}, agentloop.Options{
 		Stream: func(ctx context.Context, request ai.Request, update func(ai.AssistantMessage)) (ai.AssistantMessage, error) {
 			return client.Stream(ctx, request, func(partial ai.AssistantMessage) { snapshots = append(snapshots, partial); update(partial) })
 		},
-		Tools: []agent.Tool{{Tool: ai.Tool{Name: "read", Parameters: json.RawMessage(`{"type":"object"}`)}, Execute: func(_ context.Context, call ai.ToolCall, _ func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
+		Tools: []agentloop.Tool{{Tool: ai.Tool{Name: "read", Parameters: json.RawMessage(`{"type":"object"}`)}, Execute: func(_ context.Context, call ai.ToolCall, _ func(ai.ToolResultMessage)) (ai.ToolResultMessage, error) {
 			if string(call.Arguments) != `{"path":"main.go"}` {
 				t.Fatalf("arguments were not assembled: %s", call.Arguments)
 			}
